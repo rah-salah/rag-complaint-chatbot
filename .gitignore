@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Data files (large CFPB datasets - see README for download links)
+data/raw/
+data/processed/
+data/*.csv
+data/*.parquet
+*.parquet
+complaint_embeddings.parquet

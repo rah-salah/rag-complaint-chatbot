@@ -1,0 +1,16 @@
+pandas
+numpy
+matplotlib
+seaborn
+nltk
+langchain
+langchain-community
+sentence-transformers
+chromadb
+faiss-cpu
+gradio
+streamlit
+jupyter
+ipykernel
+flake8
+pytest
