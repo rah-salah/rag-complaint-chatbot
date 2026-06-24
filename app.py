@@ -1,56 +1,53 @@
-import gradio as gr
+import streamlit as st
 import os
+import sys
+sys.path.insert(0, ".")
 from sentence_transformers import SentenceTransformer
 from src.rag_pipeline import load_vector_store, run_rag_pipeline
 from groq import Groq
 
-print("Loading...")
-model = SentenceTransformer("all-MiniLM-L6-v2")
-index, metadata = load_vector_store()
-client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
-print("Ready.")
+st.title("CrediTrust Financial - Complaint Analyst")
 
-def answer_question(question, history):
-    if not question.strip():
-        return history, "", ""
-    try:
-        result = run_rag_pipeline(question, index, metadata, model, client)
+@st.cache_resource
+def load_resources():
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    index, metadata = load_vector_store()
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+    return model, index, metadata, client
+
+model, index, metadata, client = load_resources()
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "sources" not in st.session_state:
+    st.session_state.sources = ""
+
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+    question = st.chat_input("Ask about complaints...")
+    if question:
+        st.session_state.messages.append({"role": "user", "content": question})
+        with st.spinner("Searching..."):
+            result = run_rag_pipeline(question, index, metadata, model, client)
         answer = result["answer"]
-        sources = result["sources"]
-        source_text = ""
-        for i, src in enumerate(sources, 1):
-            cid = src.get("complaint_id", "N/A")
-            prod = src.get("product_category", "N/A")
-            txt = src.get("text", "")
-            source_text += f"**Source {i}** | ID: {cid} | Product: {prod}
+        st.session_state.messages.append({"role": "assistant", "content": answer})
+        parts = []
+        for i, s in enumerate(result["sources"], 1):
+            parts.append("Source " + str(i) + " | " + s.get("complaint_id","") + " | " + s.get("product_category","") + chr(10) + s.get("text","")[:300])
+        st.session_state.sources = chr(10) + "---" + chr(10).join(parts)
+        st.rerun()
+    if st.button("Clear"):
+        st.session_state.messages = []
+        st.session_state.sources = ""
+        st.rerun()
 
-{txt}
-
----
-
-"
-        history.append((question, answer))
-        return history, source_text, ""
-    except Exception as e:
-        history.append((question, f"Error: {str(e)}"))
-        return history, "", ""
-
-with gr.Blocks(title="CrediTrust Complaint Analyst") as demo:
-    gr.Markdown("# CrediTrust Financial — Complaint Analyst
-Ask questions about customer complaints.")
-    with gr.Row():
-        with gr.Column(scale=2):
-            chatbot = gr.Chatbot(label="Conversation", height=400)
-            question_box = gr.Textbox(placeholder="e.g. What are the most common Credit Card complaints?", label="Your Question", lines=2)
-            with gr.Row():
-                submit_btn = gr.Button("Ask", variant="primary")
-                clear_btn = gr.Button("Clear")
-        with gr.Column(scale=1):
-            sources_box = gr.Markdown(label="Retrieved Sources", value="*Sources will appear here.*")
-    state = gr.State([])
-    submit_btn.click(fn=answer_question, inputs=[question_box, state], outputs=[chatbot, sources_box, question_box])
-    question_box.submit(fn=answer_question, inputs=[question_box, state], outputs=[chatbot, sources_box, question_box])
-    clear_btn.click(fn=lambda: ([], "*Sources will appear here.*", "", []), outputs=[chatbot, sources_box, question_box, state])
-
-if __name__ == "__main__":
-    demo.launch()
+with col2:
+    st.markdown("### Sources")
+    if st.session_state.sources:
+        st.markdown(st.session_state.sources)
+    else:
+        st.info("Sources appear here.")
